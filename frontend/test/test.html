@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Local Eyebrow Alignment Test</title>
+  <style>
+    body { font-family: sans-serif; background: #1a1a1a; color: #fff; margin: 20px; }
+    .container { display: flex; gap: 20px; }
+    .controls { display: flex; flex-direction: column; gap: 12px; min-width: 280px; }
+    canvas { border: 1px solid #444; max-width: 800px; height: auto; }
+    .slider-group { display: flex; flex-direction: column; gap: 4px; }
+    label { font-size: 14px; }
+  </style>
+  <!-- CDN読み込み後にtest.jsを実行させるために defer を付与 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js" crossorigin="anonymous"></script>
+  <script defer src="test.js"></script>
+</head>
+<body>
+  <h2>眉毛フィッティング・ローカル検証環境 (AIバックエンド不要)</h2>
+  
+  <div class="container">
+    <div class="controls">
+      <label>1. 画像選択:</label>
+      <input type="file" id="upload" accept="image/*">
+
+      <hr style="width:100%; border-color:#444;">
+
+      <div class="slider-group">
+        <label>OffsetY: <span id="val-offsetY">0</span></label>
+        <input type="range" id="offsetY" min="-50" max="50" value="0" step="1">
+      </div>
+
+      <div class="slider-group">
+        <label>Angle Adjust: <span id="val-angle">0</span>°</label>
+        <input type="range" id="angle" min="-30" max="30" value="0" step="1">
+      </div>
+
+      <div class="slider-group">
+        <label>Length Scale: <span id="val-length">1.0</span></label>
+        <input type="range" id="length" min="0.5" max="2.0" value="1.0" step="0.05">
+      </div>
+
+      <div class="slider-group">
+        <label>Thickness Scale: <span id="val-thickness">1.0</span></label>
+        <input type="range" id="thickness" min="0.5" max="2.0" value="1.0" step="0.05">
+      </div>
+
+      <div class="slider-group">
+        <label>Opacity: <span id="val-opacity">0.85</span></label>
+        <input type="range" id="opacity" min="0" max="1" value="0.85" step="0.05">
+      </div>
+
+      <div class="slider-group">
+        <label><input type="checkbox" id="debugToggle" checked> デバッグ描画（ランドマーク線）</label>
+      </div>
+
+      <div class="slider-group">
+        <label><input type="checkbox" id="flipHorizontal"> 画像を左右反転する (Flip Horizontal)</label>
+      </div>
+    </div>
+
+    <div>
+      <canvas id="stage"></canvas>
+    </div>
+  </div>
+</body>
+</html>

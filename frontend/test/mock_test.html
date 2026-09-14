@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Eyebrow Detection & Overlay Test</title>
+  <style>
+    body { font-family: sans-serif; background: #1a1a1a; color: #fff; padding: 20px; }
+    .controls { margin-bottom: 15px; display: flex; gap: 20px; align-items: center; }
+    canvas { border: 1px solid #555; background: #000; max-width: 100%; height: auto; }
+    #status { color: #00ff88; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h2>Eyebrow Detection & Overlay Test</h2>
+
+  <div class="controls">
+    <label>Upload Image: <input type="file" id="upload" accept="image/*"></label>
+    <label><input type="checkbox" id="showGuide" checked> Show Guide Points</label>
+    <span id="status">Initializing MediaPipe...</span>
+  </div>
+
+  <div>
+    <canvas id="stage"></canvas>
+  </div>
+
+  <script type="module">
+    // Import MediaPipe Tasks Vision via ES module from CDN
+    import { FaceLandmarker, FilesetResolver } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs';
+
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    const uploadInput = document.getElementById('upload');
+    const statusText = document.getElementById('status');
+    const showGuideCheckbox = document.getElementById('showGuide');
+
+    let faceLandmarker = null;
+    let baseImage = null;
+    let landmarksData = null;
+
+    // Sample eyebrow image management
+    const sampleEyebrows = {
+      left: new Image(),
+      right: new Image(),
+      isLoaded: false
+    };
+
+    // Set assets relative paths
+    sampleEyebrows.left.src = '../assets/eyebrows/straight_l.png';
+    sampleEyebrows.right.src = '../assets/eyebrows/straight_r.png';
+
+    let loadedCount = 0;
+    const checkImagesLoaded = () => {
+      loadedCount++;
+      if (loadedCount === 2) {
+        sampleEyebrows.isLoaded = true;
+        console.log("✅ Sample eyebrow assets loaded successfully.");
+      }
+    };
+    if (sampleEyebrows.left.complete) checkImagesLoaded(); else sampleEyebrows.left.onload = checkImagesLoaded;
+    if (sampleEyebrows.right.complete) checkImagesLoaded(); else sampleEyebrows.right.onload = checkImagesLoaded;
+
+    // 1. Initialize MediaPipe FaceLandmarker
+    async function initMediaPipe() {
+      try {
+        const filesetResolver = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        );
+        
+        faceLandmarker = await FaceLandmarker.createFromOptions(filesetResolver, {
+          baseOptions: {
+            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
+            delegate: "GPU"
+          },
+          runningMode: "IMAGE",
+          numFaces: 1
+        });
+
+        statusText.innerText = "MediaPipe Ready. Please upload an image.";
+        console.log("✅ MediaPipe initialized.");
+      } catch (err) {
+        console.error("❌ MediaPipe initialization failed:", err);
+        statusText.innerText = "Failed to load MediaPipe (Check DevTools console).";
+      }
+    }
+
+    // 2. Image upload and landmark detection
+    uploadInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file || !faceLandmarker) return;
+
+      statusText.innerText = "Analyzing face...";
+
+      baseImage = new Image();
+      baseImage.src = URL.createObjectURL(file);
+      await baseImage.decode();
+
+      // Adjust canvas resolution to match uploaded photo
+      canvas.width = baseImage.width;
+      canvas.height = baseImage.height;
+
+      // Detect face landmarks
+      const results = faceLandmarker.detect(baseImage);
+
+      if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+        const raw = results.faceLandmarks[0];
+
+        // Normalize landmarks: Map points left-to-right on screen to prevent 180-degree rotation
+        // Person's Left Eyebrow (Screen Right): Landmark 285 (left-most point on screen) -> 276 (right-most point on screen)
+        // Person's Right Eyebrow (Screen Left): Landmark 46 (left-most point on screen) -> 55 (right-most point on screen)
+        landmarksData = {
+          leftEyebrow: {
+            leftPt:  { x: raw[285].x * canvas.width, y: raw[285].y * canvas.height },
+            rightPt: { x: raw[276].x * canvas.width, y: raw[276].y * canvas.height }
+          },
+          rightEyebrow: {
+            leftPt:  { x: raw[46].x * canvas.width,  y: raw[46].y * canvas.height },
+            rightPt: { x: raw[55].x * canvas.width,  y: raw[55].y * canvas.height }
+          }
+        };
+
+        statusText.innerText = "Analysis complete! Displaying eyebrows.";
+        console.log("Extracted Eyebrow Coordinates:", landmarksData);
+      } else {
+        landmarksData = null;
+        statusText.innerText = "No face detected. Please try another image.";
+      }
+
+      render();
+    });
+
+    showGuideCheckbox.addEventListener('change', () => render());
+
+    // 3. Render eyebrow asset based on vector calculation
+    function drawEyebrow(img, leftPt, rightPt) {
+      if (!img || !leftPt || !rightPt) return;
+
+      // Calculate midpoint between screen-left and screen-right landmarks
+      const centerX = (leftPt.x + rightPt.x) / 2;
+      const centerY = (leftPt.y + rightPt.y) / 2;
+
+      // Vector always points left-to-right horizontally to guarantee correct rotation angle
+      const dx = rightPt.x - leftPt.x;
+      const dy = rightPt.y - leftPt.y;
+      const angle = Math.atan2(dy, dx);
+      const distance = Math.hypot(dx, dy);
+
+      // Compute display dimensions while preserving aspect ratio
+      const renderWidth = distance * 1.35;
+      const aspectRatio = img.naturalHeight > 0 ? (img.naturalHeight / img.naturalWidth) : 0.3;
+      const renderHeight = renderWidth * aspectRatio;
+
+      ctx.save();
+      ctx.translate(centerX, centerY);
+      ctx.rotate(angle);
+
+      // Draw original eyebrow asset centered at midpoint
+      ctx.drawImage(
+        img,
+        -renderWidth / 2,
+        -renderHeight / 2,
+        renderWidth,
+        renderHeight
+      );
+
+      ctx.restore();
+
+      // Debug overlay (Green: direction vector / Blue: left point / Yellow: right point / Red: center)
+      if (showGuideCheckbox.checked) {
+        ctx.save();
+        ctx.strokeStyle = '#00ff00';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(leftPt.x, leftPt.y);
+        ctx.lineTo(rightPt.x, rightPt.y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#0088ff';
+        ctx.beginPath(); ctx.arc(leftPt.x, leftPt.y, 4, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = '#ffff00';
+        ctx.beginPath(); ctx.arc(rightPt.x, rightPt.y, 4, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = '#ff0000';
+        ctx.beginPath(); ctx.arc(centerX, centerY, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // 4. Main canvas render loop
+    function render() {
+      if (!baseImage) return;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(baseImage, 0, 0);
+
+      if (landmarksData && sampleEyebrows.isLoaded) {
+        // Draw person's left eyebrow (straight_l.png)
+        drawEyebrow(
+          sampleEyebrows.left,
+          landmarksData.leftEyebrow.leftPt,
+          landmarksData.leftEyebrow.rightPt
+        );
+
+        // Draw person's right eyebrow (straight_r.png)
+        drawEyebrow(
+          sampleEyebrows.right,
+          landmarksData.rightEyebrow.leftPt,
+          landmarksData.rightEyebrow.rightPt
+        );
+      }
+    }
+
+    // Execute application bootstrap
+    initMediaPipe();
+  </script>
+</body>
+</html>

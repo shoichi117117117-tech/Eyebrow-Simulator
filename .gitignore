@@ -1,0 +1,19 @@
+# Python virtual environment & cache
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Node modules
+node_modules/
+
+# MediaPipe / AI Task Model (Large Binary File)
+*.task
+
+# Environment variables & Keys
+.env
+.env.local
+
+# System files
+.DS_Store
+Thumbs.db
